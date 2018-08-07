@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Handwriting VAE</title>
+  <script src="https://unpkg.com/keras-js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/dat-gui/0.7.2/dat.gui.min.js"></script>
+  <style>
+    #form {
+      margin-bottom: 14px;
+    }
+  </style>
+</head>
+<body>
+  <form id="form">
+    <input type="text" name="num" id="num" value="65537" onkeyup="update()">
+    <input type="submit" value="Go!">
+  </form>
+
+  <canvas id="canvas" width="800" height="600"></canvas>
+
+  <script type="text/javascript">
+    const widths = { // must be even!
+      '0': 20,
+      '1': 14,
+      '2': 20,
+      '3': 20,
+      '4': 20,
+      '5': 20,
+      '6': 20,
+      '7': 20,
+      '8': 20,
+      '9': 20,
+    };
+
+    const settings = {
+      x1: 0.0,
+      x2: 0.0,
+      x3: 0.0,
+      x4: 0.0,
+      stdev: 0.2,
+    };
+
+    const model = new KerasJS.Model({
+      filepath: 'decoder.bin',
+      gpu: true,
+    });
+
+    async function sample(digit, latent) {
+      let onehot = new Float32Array(10);
+      onehot[digit] = 1.0;
+      await model.ready();
+      const output = (await model.predict({
+        z_sampling: new Float32Array(latent),
+        label: onehot
+      })).reshape_3;
+      return output;
+    }
+
+    function randn() {
+      let u = Math.random();
+      let v = Math.random();
+      return Math.sqrt(-2.0 * Math.log(u)) * Math.cos(2.0 * Math.PI * v);
+    }
+
+    async function get_digit(digit) {
+      const latent = new Float32Array(4);
+      for (let i = 0; i < 4; i++) {
+        latent[i] = settings.stdev * randn();
+      }
+      latent[0] += settings.x1;
+      latent[1] += settings.x2;
+      latent[2] += settings.x3;
+      latent[3] += settings.x4;
+      const output = await sample(digit, latent);
+      const ret = [];
+      for (let i = 0; i < 28; i++) {
+        ret.push(output.slice(28 * i, 28 * (i + 1)));
+      }
+      return ret;
+    }
+
+    async function get_word(str) {
+      str = str.replace(/[^0-9]/g, '');
+      let width = 28 * str.length;
+      for (let i = 0; i + 1 < str.length; i++) {
+        width -= 28 - (widths[str[i]] + widths[str[i + 1]]) / 2;
+      }
+      const im = [];
+      for (let i = 0; i < 28; i++) {
+        im.push(new Float32Array(width));
+      }
+      let pos = 0;
+      for (let i = 0; i < str.length; i++) {
+        const digit = await get_digit(Number(str[i]));
+        for (let j = 0; j < 28; j++) {
+          for (let k = 0; k < 28; k++) {
+            im[j][pos + k] += digit[j][k];
+          }
+        }
+        if (i + 1 < str.length) {
+          pos += (widths[str[i]] + widths[str[i + 1]]) / 2;
+        }
+      }
+      return im;
+    }
+
+    function to_img(data) {
+      let width = 0;
+      for (let i = 0; i < data.length; i++) {
+        width = Math.max(width, data[i].length);
+      }
+      if (width * data.length === 0) {
+        return null;
+      }
+      const ret = new ImageData(width, data.length);
+      const d = ret.data;
+      for (let i = 0; i < data.length; i++) {
+        for (let j = 0; j < data[i].length; j++) {
+          let idx = 4 * (width * i + j);
+          const pix = Math.floor((1 - data[i][j]) * 255);
+          d[idx] = d[idx + 1] = d[idx + 2] = pix;
+          d[idx + 3] = 255;
+        }
+      }
+      return ret;
+    }
+
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+
+    async function update() {
+      const num = document.getElementById('num').value;
+      const sample = await get_word(num);
+      const im = to_img(sample);
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      if (im != null) {
+        ctx.putImageData(im, 0, 0);
+      }
+    }
+
+    const form = document.getElementById('form');
+    form.addEventListener('submit', async function(e) {
+      e.preventDefault();
+      update();
+    });
+
+    const gui = new dat.GUI();
+    gui.add(settings, 'x1', -3.0, 3.0, 0.1).onChange(update);
+    gui.add(settings, 'x2', -3.0, 3.0, 0.1).onChange(update);
+    gui.add(settings, 'x3', -3.0, 3.0, 0.1).onChange(update);
+    gui.add(settings, 'x4', -3.0, 3.0, 0.1).onChange(update);
+    gui.add(settings, 'stdev', 0.0, 1.0, 0.02).onChange(update);
+
+    update();
+
+  </script>
+</body>
+</html>
