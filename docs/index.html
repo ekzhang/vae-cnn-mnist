@@ -160,6 +160,7 @@
       const im = to_img(sample);
       ctx.clearRect(0, 0, canvas.width, canvas.height);
       if (im != null) {
+        canvas.height = sample.length;
         ctx.putImageData(im, 0, 0);
       }
     }
