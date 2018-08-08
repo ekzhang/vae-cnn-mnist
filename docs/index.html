@@ -8,29 +8,32 @@
     #form {
       margin-bottom: 14px;
     }
+    #canvas {
+      border: 2px dashed black;
+      padding: 5px;
+    }
   </style>
 </head>
 <body>
   <form id="form">
-    <input type="text" name="num" id="num" value="65537" onkeyup="update()">
+    <input type="text" name="text" id="text" value="hello world 65537">
     <input type="submit" value="Go!">
   </form>
 
-  <canvas id="canvas" width="800" height="600"></canvas>
+  <canvas id="canvas" width="600" height="400"></canvas>
 
   <script type="text/javascript">
-    const widths = { // must be even!
-      '0': 20,
-      '1': 14,
-      '2': 20,
-      '3': 20,
-      '4': 20,
-      '5': 20,
-      '6': 20,
-      '7': 20,
-      '8': 20,
-      '9': 20,
-    };
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+    const max_width = canvas.width;
+
+    const alphabet = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+    const widths = [ // must be even!
+      20, 14, 20, 20, 20, 20, 20, 20, 20, 20, // 0-9
+      20, 20, 20, 20, 20, 20, 20, 20, 18, 20, // A-J
+      20, 20, 22, 20, 20, 20, 20, 20, 20, 20, // K-T
+      20, 24, 22, 20, 20, 22,                 // U-Z
+    ];
 
     const settings = {
       x1: 0.0,
@@ -45,9 +48,9 @@
       gpu: true,
     });
 
-    async function sample(digit, latent) {
-      let onehot = new Float32Array(10);
-      onehot[digit] = 1.0;
+    async function sample(char_id, latent) {
+      let onehot = new Float32Array(alphabet.length);
+      onehot[char_id] = 1.0;
       await model.ready();
       const output = (await model.predict({
         z_sampling: new Float32Array(latent),
@@ -62,7 +65,7 @@
       return Math.sqrt(-2.0 * Math.log(u)) * Math.cos(2.0 * Math.PI * v);
     }
 
-    async function get_digit(digit) {
+    async function get_char(char_id) {
       const latent = new Float32Array(4);
       for (let i = 0; i < 4; i++) {
         latent[i] = settings.stdev * randn();
@@ -71,7 +74,7 @@
       latent[1] += settings.x2;
       latent[2] += settings.x3;
       latent[3] += settings.x4;
-      const output = await sample(digit, latent);
+      const output = await sample(char_id, latent);
       const ret = [];
       for (let i = 0; i < 28; i++) {
         ret.push(output.slice(28 * i, 28 * (i + 1)));
@@ -80,10 +83,11 @@
     }
 
     async function get_word(str) {
-      str = str.replace(/[^0-9]/g, '');
+      str = str.toUpperCase().replace(/[^0-9A-Z]/g, '');
       let width = 28 * str.length;
       for (let i = 0; i + 1 < str.length; i++) {
-        width -= 28 - (widths[str[i]] + widths[str[i + 1]]) / 2;
+        width -= 28 - (widths[alphabet.indexOf(str[i])]
+          + widths[alphabet.indexOf(str[i + 1])]) / 2;
       }
       const im = [];
       for (let i = 0; i < 28; i++) {
@@ -91,15 +95,40 @@
       }
       let pos = 0;
       for (let i = 0; i < str.length; i++) {
-        const digit = await get_digit(Number(str[i]));
+        const digit = await get_char(alphabet.indexOf(str[i]));
         for (let j = 0; j < 28; j++) {
           for (let k = 0; k < 28; k++) {
             im[j][pos + k] += digit[j][k];
           }
         }
         if (i + 1 < str.length) {
-          pos += (widths[str[i]] + widths[str[i + 1]]) / 2;
+          pos += (widths[alphabet.indexOf(str[i])]
+            + widths[alphabet.indexOf(str[i + 1])]) / 2;
         }
+      }
+      return im;
+    }
+
+    async function get_text(str) {
+      str = str.split(' ');
+      const im = [];
+      let pos = max_width;
+      for (const word of str) {
+        word_im = await get_word(word);
+        if (pos + word_im[0].length > max_width) {
+          pos = 0;
+          for (let i = 0; i < word_im.length; i++) {
+            im.push(new Float32Array(max_width));
+          }
+        }
+        for (let i = 0; i < word_im.length; i++) {
+          for (let j = 0; j < word_im[i].length; j++) {
+            if (pos + j >= max_width)
+              break;
+            im[im.length - word_im.length + i][pos + j] += word_im[i][j];
+          }
+        }
+        pos += word_im[0].length + 8;
       }
       return im;
     }
@@ -125,12 +154,9 @@
       return ret;
     }
 
-    const canvas = document.getElementById('canvas');
-    const ctx = canvas.getContext('2d');
-
     async function update() {
-      const num = document.getElementById('num').value;
-      const sample = await get_word(num);
+      const text = document.getElementById('text').value;
+      const sample = await get_text(text);
       const im = to_img(sample);
       ctx.clearRect(0, 0, canvas.width, canvas.height);
       if (im != null) {

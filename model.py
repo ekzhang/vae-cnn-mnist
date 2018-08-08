@@ -2,11 +2,13 @@ from keras.models import Model
 from keras.layers import (Conv2D, Activation, Dense, Lambda, Input,
     MaxPooling2D, Dropout, Flatten, Reshape, UpSampling2D, Concatenate)
 from keras.losses import mse
+from keras.utils import plot_model
 from keras import backend as K
 
 image_shape = (28, 28, 1)
 original_dim = image_shape[0] * image_shape[1]
 input_shape = (original_dim,)
+num_classes = 36
 batch_size = 128
 latent_dim = 4
 
@@ -41,10 +43,11 @@ def build_model():
 
     encoder = Model(inputs, [z_mean, z_log_var, z], name='encoder')
     encoder.summary()
+    plot_model(encoder, to_file='vae_cnn_encoder.png', show_shapes=True)
 
     # decoder
     latent_inputs = Input(shape=(latent_dim,), name='z_sampling')
-    label_inputs = Input(shape=(10,), name='label')
+    label_inputs = Input(shape=(num_classes,), name='label')
     x = Concatenate()([latent_inputs, label_inputs])
     x = Dense(128, activation='relu')(x)
     x = Dense(14 * 14 * 32, activation='relu')(x)
@@ -57,11 +60,13 @@ def build_model():
 
     decoder = Model([latent_inputs, label_inputs], outputs, name='decoder')
     decoder.summary()
+    plot_model(decoder, to_file='vae_cnn_decoder.png', show_shapes=True)
 
     # variational autoencoder
     outputs = decoder([encoder(inputs)[2], label_inputs])
     vae = Model([inputs, label_inputs], outputs, name='vae_mlp')
     vae.summary()
+    plot_model(vae, to_file='vae_cnn.png', show_shapes=True)
 
     # loss function
     reconstruction_loss = mse(inputs, outputs)
