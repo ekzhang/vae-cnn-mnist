@@ -10,7 +10,7 @@ original_dim = image_shape[0] * image_shape[1]
 input_shape = (original_dim,)
 num_classes = 36
 batch_size = 128
-latent_dim = 4
+latent_dim = 6
 
 def sampling(args):
     """Reparameterization trick by sampling from an isotropic unit Gaussian.

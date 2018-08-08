@@ -42,6 +42,8 @@
       x2: 0.0,
       x3: 0.0,
       x4: 0.0,
+      x5: 0.0,
+      x6: 0.0,
       stdev: 0.2,
     };
 
@@ -77,13 +79,15 @@
 
     function gen_latent() {
       const latent = [];
-      for (let i = 0; i < 4; i++) {
+      for (let i = 0; i < 6; i++) {
         latent.push(settings.stdev * randn());
       }
       latent[0] += settings.x1;
       latent[1] += settings.x2;
       latent[2] += settings.x3;
       latent[3] += settings.x4;
+      latent[4] += settings.x5;
+      latent[5] += settings.x6;
       return latent;
     }
 
@@ -223,6 +227,8 @@
     gui.add(settings, 'x2', -3.0, 3.0, 0.1).onChange(update);
     gui.add(settings, 'x3', -3.0, 3.0, 0.1).onChange(update);
     gui.add(settings, 'x4', -3.0, 3.0, 0.1).onChange(update);
+    gui.add(settings, 'x5', -3.0, 3.0, 0.1).onChange(update);
+    gui.add(settings, 'x6', -3.0, 3.0, 0.1).onChange(update);
     gui.add(settings, 'stdev', 0.0, 1.0, 0.02).onChange(update);
 
     update();
