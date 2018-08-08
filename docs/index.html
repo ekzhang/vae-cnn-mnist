@@ -45,7 +45,7 @@
       stdev: 0.2,
     };
 
-    const model = tf.loadModel('model.json');
+    const model = tf.loadModel('./model.json');
 
     async function sample(char, latent) {
       let onehot = new Float32Array(alphabet.length);
