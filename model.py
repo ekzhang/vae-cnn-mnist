@@ -88,4 +88,6 @@ def from_weights(weights_file):
 
 if __name__ == '__main__':
     encoder, decoder, vae = from_weights('vae_cnn_mnist.h5')
-    decoder.save('decoder.h5')
+    # decoder.save('decoder.h5')
+    import tensorflowjs as tfjs
+    tfjs.converters.save_keras_model(decoder, 'docs')

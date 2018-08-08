@@ -3,6 +3,8 @@
 <head>
   <title>Handwriting VAE</title>
   <script src="https://unpkg.com/keras-js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@0.12.4"></script>
+  <script src="https://cdn.rawgit.com/kig/canvasfilters/590154b8/filters.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/dat-gui/0.7.2/dat.gui.min.js"></script>
   <style>
     #form {
@@ -43,20 +45,28 @@
       stdev: 0.2,
     };
 
-    const model = new KerasJS.Model({
-      filepath: 'decoder.bin',
-      gpu: true,
-    });
+    const model = tf.loadModel('model.json');
 
-    async function sample(char_id, latent) {
+    async function sample(char, latent) {
       let onehot = new Float32Array(alphabet.length);
-      onehot[char_id] = 1.0;
-      await model.ready();
-      const output = (await model.predict({
-        z_sampling: new Float32Array(latent),
-        label: onehot
-      })).reshape_3;
-      return output;
+      onehot[alphabet.indexOf(char)] = 1.0;
+      const output = (await model).predict([
+        tf.tensor(latent).reshape([1, -1]),
+        tf.tensor(onehot).reshape([1, -1]),
+      ]);
+      return output.data();
+    }
+
+    async function sample_all(chars, latent) {
+      const onehot = new Float32Array(alphabet.length * chars.length);
+      for (let i = 0; i < chars.length; i++) {
+        onehot[alphabet.length * i + alphabet.indexOf(chars[i])] = 1.0;
+      }
+      const output = (await model).predict([
+        tf.tensor2d(latent),
+        tf.tensor2d(onehot, [chars.length, alphabet.length]),
+      ], { batchSize: 32 });
+      return output.data();
     }
 
     function randn() {
@@ -65,16 +75,20 @@
       return Math.sqrt(-2.0 * Math.log(u)) * Math.cos(2.0 * Math.PI * v);
     }
 
-    async function get_char(char_id) {
-      const latent = new Float32Array(4);
+    function gen_latent() {
+      const latent = [];
       for (let i = 0; i < 4; i++) {
-        latent[i] = settings.stdev * randn();
+        latent.push(settings.stdev * randn());
       }
       latent[0] += settings.x1;
       latent[1] += settings.x2;
       latent[2] += settings.x3;
       latent[3] += settings.x4;
-      const output = await sample(char_id, latent);
+      return latent;
+    }
+
+    async function get_char(char) {
+      const output = await sample(char, gen_latent());
       const ret = [];
       for (let i = 0; i < 28; i++) {
         ret.push(output.slice(28 * i, 28 * (i + 1)));
@@ -82,8 +96,28 @@
       return ret;
     }
 
-    async function get_word(str) {
+    async function get_chars(str) {
+      const latent = [];
+      for (let i = 0; i < str.length; i++) {
+        latent.push(gen_latent());
+      }
+      const output = await sample_all(str, latent);
+      const ret = [];
+      for (let i = 0; i < str.length; i++) {
+        const lines = [];
+        for (let j = 0; j < 28; j++) {
+          lines.push(output.slice(784 * i + 28 * j, 784 * i + 28 * (j + 1)));
+        }
+        ret.push(lines);
+      }
+      return ret;
+    }
+
+    async function get_word(str, char_ims) {
       str = str.toUpperCase().replace(/[^0-9A-Z]/g, '');
+      if (!char_ims) {
+        char_ims = await get_chars(str);
+      }
       let width = 28 * str.length;
       for (let i = 0; i + 1 < str.length; i++) {
         width -= 28 - (widths[alphabet.indexOf(str[i])]
@@ -95,10 +129,10 @@
       }
       let pos = 0;
       for (let i = 0; i < str.length; i++) {
-        const digit = await get_char(alphabet.indexOf(str[i]));
+        const char_im = char_ims.shift();
         for (let j = 0; j < 28; j++) {
           for (let k = 0; k < 28; k++) {
-            im[j][pos + k] += digit[j][k];
+            im[j][pos + k] += char_im[j][k];
           }
         }
         if (i + 1 < str.length) {
@@ -110,11 +144,13 @@
     }
 
     async function get_text(str) {
-      str = str.split(' ');
+      words = str.split(' ');
+      str = str.toUpperCase().replace(/[^0-9A-Z]/g, '');
+      const char_ims = await get_chars(str);
       const im = [];
       let pos = max_width;
-      for (const word of str) {
-        word_im = await get_word(word);
+      for (const word of words) {
+        const word_im = await get_word(word, char_ims);
         if (pos + word_im[0].length > max_width) {
           pos = 0;
           for (let i = 0; i < word_im.length; i++) {
@@ -130,6 +166,13 @@
         }
         pos += word_im[0].length + 8;
       }
+      return im;
+    }
+
+    function filter(im) {
+      const sharpen_kernel = [0, -1, 0, -1, 5, -1, 0, -1, 0];
+      im = Filters.gaussianBlur(im, 4.0);
+      im = Filters.convolve(im, sharpen_kernel);
       return im;
     }
 
@@ -154,15 +197,19 @@
       return ret;
     }
 
-    async function update() {
-      const text = document.getElementById('text').value;
+    async function display(text) {
       const sample = await get_text(text);
       const im = to_img(sample);
       ctx.clearRect(0, 0, canvas.width, canvas.height);
       if (im != null) {
         canvas.height = sample.length;
-        ctx.putImageData(im, 0, 0);
+        ctx.putImageData(filter(im), 0, 0);
       }
+    }
+
+    async function update() {
+      const text = document.getElementById('text').value;
+      display(text);
     }
 
     const form = document.getElementById('form');
